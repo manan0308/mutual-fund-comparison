@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Wifi, WifiOff, BarChart3, Calculator, TrendingUp, PieChart } from 'lucide-react';
+import { AlertCircle, Wifi, WifiOff, BarChart3, Calculator, TrendingUp, PieChart, CheckCircle } from 'lucide-react';
 import InvestmentForm from './components/InvestmentForm';
 import ResultsDisplay from './components/ResultsDisplay';
 import PortfolioBuilder from './components/PortfolioBuilder';
@@ -11,7 +11,8 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [apiStatus, setApiStatus] = useState('checking');
-  const [activeTab, setActiveTab] = useState('compare'); // compare, portfolio, multisip
+  const [activeTab, setActiveTab] = useState('portfolio'); // compare, portfolio, multisip
+  const [portfolioSuccess, setPortfolioSuccess] = useState(null);
 
   // Check API health on component mount
   useEffect(() => {
@@ -75,6 +76,13 @@ const App = () => {
     setResults(null);
   };
 
+  // Clear success messages when switching tabs
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setPortfolioSuccess(null);
+    setError(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -110,42 +118,55 @@ const App = () => {
           )}
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-lg shadow-md p-1">
-            <button
-              onClick={() => setActiveTab('compare')}
-              className={`px-6 py-3 rounded-md font-medium transition-colors flex items-center ${
-                activeTab === 'compare' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Fund Comparison
-            </button>
-            <button
-              onClick={() => setActiveTab('portfolio')}
-              className={`px-6 py-3 rounded-md font-medium transition-colors flex items-center ${
-                activeTab === 'portfolio' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              <PieChart className="h-4 w-4 mr-2" />
-              Portfolio Builder
-            </button>
-            <button
-              onClick={() => setActiveTab('multisip')}
-              className={`px-6 py-3 rounded-md font-medium transition-colors flex items-center ${
-                activeTab === 'multisip' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              Multi-SIP Calculator
-            </button>
+        {/* Enhanced Tab Navigation */}
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-lg p-2 max-w-4xl mx-auto">
+            <div className="grid md:grid-cols-3 gap-2">
+              <button
+                onClick={() => handleTabChange('compare')}
+                className={`p-4 rounded-lg font-medium transition-all duration-200 flex flex-col items-center space-y-2 ${
+                  activeTab === 'compare' 
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105' 
+                    : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:scale-102'
+                }`}
+              >
+                <BarChart3 className="h-6 w-6" />
+                <div>
+                  <div className="font-semibold">Fund Comparison</div>
+                  <div className="text-xs opacity-75">Compare 2 funds side-by-side</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleTabChange('portfolio')}
+                className={`p-4 rounded-lg font-medium transition-all duration-200 flex flex-col items-center space-y-2 ${
+                  activeTab === 'portfolio' 
+                    ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg transform scale-105' 
+                    : 'text-gray-600 hover:bg-green-50 hover:text-green-700 hover:scale-102'
+                }`}
+              >
+                <PieChart className="h-6 w-6" />
+                <div>
+                  <div className="font-semibold">Portfolio Builder</div>
+                  <div className="text-xs opacity-75">Build diversified portfolio</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleTabChange('multisip')}
+                className={`p-4 rounded-lg font-medium transition-all duration-200 flex flex-col items-center space-y-2 ${
+                  activeTab === 'multisip' 
+                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg transform scale-105' 
+                    : 'text-gray-600 hover:bg-purple-50 hover:text-purple-700 hover:scale-102'
+                }`}
+              >
+                <Calculator className="h-6 w-6" />
+                <div>
+                  <div className="font-semibold">Multi-SIP Calculator</div>
+                  <div className="text-xs opacity-75">Plan SIP across funds</div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -177,10 +198,42 @@ const App = () => {
         )}
         
         {activeTab === 'portfolio' && (
-          <PortfolioBuilder onPortfolioCreate={(portfolio) => {
-            console.log('Portfolio created:', portfolio);
-            // You could show success message or redirect here
-          }} />
+          <>
+            {portfolioSuccess && (
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-green-800">Portfolio Created Successfully!</h3>
+                    <p className="text-sm text-green-700 mt-1">
+                      "{portfolioSuccess.portfolio.name}" with {portfolioSuccess.portfolio.funds.length} funds
+                    </p>
+                    <div className="mt-2 text-xs text-green-600">
+                      {portfolioSuccess.portfolio.totalMonthlyInvestment > 0 && 
+                        `Monthly SIP: ₹${portfolioSuccess.portfolio.totalMonthlyInvestment.toLocaleString()}`
+                      }
+                      {portfolioSuccess.portfolio.totalLumpSumInvestment > 0 && 
+                        ` | Lump Sum: ₹${portfolioSuccess.portfolio.totalLumpSumInvestment.toLocaleString()}`
+                      }
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setPortfolioSuccess(null)}
+                    className="ml-4 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+            <PortfolioBuilder onPortfolioCreate={(portfolio) => {
+              setPortfolioSuccess(portfolio);
+              // Auto-scroll to success message
+              setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }, 100);
+            }} />
+          </>
         )}
         
         {activeTab === 'multisip' && (
