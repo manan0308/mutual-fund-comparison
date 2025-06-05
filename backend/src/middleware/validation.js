@@ -24,16 +24,21 @@ const schemas = {
   }),
 
   portfolioCreate: Joi.object({
-    name: Joi.string().min(1).max(100).required(),
+    name: Joi.string().min(3).max(100).required(),
     funds: Joi.array().items(
       Joi.object({
         schemeCode: Joi.string().pattern(/^\d{6}$/).required(),
-        allocation: Joi.number().min(0.01).max(100).required()
+        name: Joi.string().optional(),
+        category: Joi.string().optional(),
+        investmentType: Joi.string().valid('sip', 'lumpsum').required(),
+        amount: Joi.number().positive().required(),
+        startDate: Joi.date().iso().required(),
+        sipDuration: Joi.number().integer().min(12).max(600).optional(),
+        allocation: Joi.number().min(0.01).max(100).optional()
       })
-    ).min(2).max(10).required(),
-    totalAmount: Joi.number().positive().max(100000000).required(),
-    investmentType: Joi.string().valid('sip', 'lumpsum').required(),
-    benchmarkIndex: Joi.string().valid('nifty50', 'sensex', 'nifty500', 'niftymidcap', 'niftysmallcap').optional()
+    ).min(1).max(20).required(),
+    benchmarkIndex: Joi.string().valid('nifty50', 'sensex', 'nifty500', 'niftymidcap', 'niftysmallcap', 'niftybank', 'niftyit').optional(),
+    userId: Joi.string().optional()
   }),
 
   multiSipCalculation: Joi.object({

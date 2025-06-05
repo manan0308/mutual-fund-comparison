@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mfApiService = require('../services/mfApiService');
 const calculationService = require('../services/calculationService');
+const indexDataService = require('../services/indexDataService');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { validateSearchFunds, validateSchemeCode, validateDateRange, validateComparePortfolios } = require('../middleware/validation');
 const logger = require('../utils/logger');
@@ -88,7 +89,8 @@ router.post('/compare',
       investmentType,
       amount,
       startDate,
-      endDate
+      endDate,
+      benchmarkIndex = 'nifty50' // Default to Nifty 50 if not specified
     } = req.body;
     
     logger.info('Comparing portfolios', {
@@ -161,8 +163,43 @@ router.post('/compare',
       endDate
     );
     
+    // Calculate index comparison for 3-way comparison
+    let indexComparison = null;
+    let indexData = null;
+    try {
+      const period = calculatePeriodFromDates(startDate, endDate);
+      indexData = await indexDataService.getIndexHistoricalData(benchmarkIndex, period);
+      
+      // Calculate index returns for the same investment
+      indexComparison = calculateIndexReturnsForPeriod(
+        indexData, 
+        startDate, 
+        endDate, 
+        investmentType, 
+        amount
+      );
+      
+      logger.info('Index comparison calculated', {
+        benchmarkIndex,
+        indexValue: indexComparison.currentValue,
+        indexReturn: indexComparison.returnPercentage
+      });
+      
+    } catch (error) {
+      logger.warn('Failed to calculate index comparison', { 
+        benchmarkIndex, 
+        error: error.message 
+      });
+      // Index comparison will remain null if it fails
+    }
+    
     const result = {
       ...comparison,
+      index: indexComparison ? {
+        benchmarkIndex,
+        name: indexData?.symbol || benchmarkIndex,
+        ...indexComparison
+      } : null,
       metadata: {
         calculatedAt: new Date().toISOString(),
         investmentType,
@@ -171,7 +208,8 @@ router.post('/compare',
         dataPoints: {
           current: currentNavFiltered.length,
           comparison: comparisonNavFiltered.length
-        }
+        },
+        includesIndexComparison: indexComparison !== null
       }
     };
     
@@ -221,6 +259,102 @@ router.get('/funds/:schemeCode',
     res.json(result);
   })
 );
+
+// Helper functions for index calculations
+function calculatePeriodFromDates(startDate, endDate) {
+  if (!startDate || !endDate) return '1y';
+  
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays <= 7) return '1w';
+  if (diffDays <= 30) return '1mo';
+  if (diffDays <= 90) return '3mo';
+  if (diffDays <= 180) return '6mo';
+  if (diffDays <= 365) return '1y';
+  if (diffDays <= 730) return '2y';
+  return '5y';
+}
+
+function calculateIndexReturnsForPeriod(indexData, startDate, endDate, investmentType, amount) {
+  const data = indexData.data;
+  if (!data || data.length === 0) {
+    throw new Error('No index data available for calculation');
+  }
+
+  // Find start and end prices
+  const startPrice = findPriceForDate(data, startDate);
+  const endPrice = data[data.length - 1].close;
+
+  if (investmentType === 'lump') {
+    // Lump sum calculation
+    const units = amount / startPrice;
+    const currentValue = units * endPrice;
+    const absoluteReturn = currentValue - amount;
+    const returnPercentage = (absoluteReturn / amount) * 100;
+
+    const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
+    const years = days / 365;
+    const annualizedReturn = Math.pow(currentValue / amount, 1 / years) - 1;
+
+    return {
+      invested: amount,
+      currentValue: Math.round(currentValue),
+      absoluteReturn: Math.round(absoluteReturn),
+      returnPercentage: Math.round(returnPercentage * 100) / 100,
+      annualizedReturn: Math.round(annualizedReturn * 100 * 100) / 100,
+      units: Math.round(units * 1000) / 1000
+    };
+  } else {
+    // SIP calculation for index
+    let totalInvested = 0;
+    let totalUnits = 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    let current = new Date(start);
+    while (current <= end) {
+      const monthPrice = findPriceForDate(data, current.toISOString().split('T')[0]);
+      if (monthPrice) {
+        totalUnits += amount / monthPrice;
+        totalInvested += amount;
+      }
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    const currentValue = totalUnits * endPrice;
+    const absoluteReturn = currentValue - totalInvested;
+    const returnPercentage = (absoluteReturn / totalInvested) * 100;
+
+    return {
+      invested: totalInvested,
+      currentValue: Math.round(currentValue),
+      absoluteReturn: Math.round(absoluteReturn),
+      returnPercentage: Math.round(returnPercentage * 100) / 100,
+      units: Math.round(totalUnits * 1000) / 1000
+    };
+  }
+}
+
+function findPriceForDate(data, targetDate) {
+  const target = new Date(targetDate);
+  
+  // Find exact match or closest date
+  let closest = data[0];
+  let minDiff = Math.abs(new Date(data[0].date) - target);
+
+  for (const item of data) {
+    const diff = Math.abs(new Date(item.date) - target);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = item;
+    }
+  }
+
+  return closest.close;
+}
 
 // API documentation endpoint
 router.get('/', (req, res) => {

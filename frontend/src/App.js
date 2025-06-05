@@ -1,36 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, Wifi, WifiOff, BarChart3, Calculator, TrendingUp, PieChart, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertCircle, BarChart3, Calculator, TrendingUp, PieChart, CheckCircle, Target, Briefcase } from 'lucide-react';
 import InvestmentForm from './components/InvestmentForm';
 import ResultsDisplay from './components/ResultsDisplay';
 import PortfolioBuilder from './components/PortfolioBuilder';
 import MultiSipCalculator from './components/MultiSipCalculator';
+import FundAnalysis from './components/FundAnalysis';
 import { apiService } from './services/api';
 
 const App = () => {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [apiStatus, setApiStatus] = useState('checking');
-  const [activeTab, setActiveTab] = useState('portfolio'); // compare, portfolio, multisip
+  const [activeTab, setActiveTab] = useState('fund-analysis'); // fund-analysis, portfolio, multisip
   const [portfolioSuccess, setPortfolioSuccess] = useState(null);
-
-  // Check API health on component mount
-  useEffect(() => {
-    const checkApiHealth = async () => {
-      try {
-        const health = await apiService.healthCheck();
-        setApiStatus(health.status === 'OK' ? 'online' : 'offline');
-      } catch (err) {
-        setApiStatus('offline');
-      }
-    };
-
-    checkApiHealth();
-    // Check every 30 seconds
-    const interval = setInterval(checkApiHealth, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   const calculateComparison = async (params) => {
     setLoading(true);
@@ -88,34 +70,12 @@ const App = () => {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <h1 className="text-4xl font-bold text-gray-900">
-              Mutual Fund Portfolio Tools
-            </h1>
-            {/* API Status Indicator */}
-            <div className={`ml-4 flex items-center text-sm px-3 py-1 rounded-full ${
-              apiStatus === 'online' ? 'bg-green-100 text-green-800' : 
-              apiStatus === 'offline' ? 'bg-red-100 text-red-800' : 
-              'bg-yellow-100 text-yellow-800'
-            }`}>
-              {apiStatus === 'online' ? (
-                <><Wifi className="h-4 w-4 mr-1" /> API Online</>
-              ) : apiStatus === 'offline' ? (
-                <><WifiOff className="h-4 w-4 mr-1" /> Offline Mode</>
-              ) : (
-                <><div className="animate-spin h-4 w-4 mr-1 border-2 border-yellow-800 border-t-transparent rounded-full"></div> Checking...</>
-              )}
-            </div>
-          </div>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            Mutual Fund Portfolio Tools
+          </h1>
           <p className="text-xl text-gray-600">
-            Portfolio builder, multi-fund SIP calculator, and fund comparison tools
+            Portfolio builder, multi-fund SIP calculator, and fund comparison tools with real-time data
           </p>
-          {apiStatus === 'offline' && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-              <AlertCircle className="inline h-4 w-4 mr-1" />
-              Running in offline mode with sample data. Results are for demonstration only.
-            </div>
-          )}
         </div>
 
         {/* Enhanced Tab Navigation */}
@@ -123,17 +83,17 @@ const App = () => {
           <div className="bg-white rounded-xl shadow-lg p-2 max-w-4xl mx-auto">
             <div className="grid md:grid-cols-3 gap-2">
               <button
-                onClick={() => handleTabChange('compare')}
+                onClick={() => handleTabChange('fund-analysis')}
                 className={`p-4 rounded-lg font-medium transition-all duration-200 flex flex-col items-center space-y-2 ${
-                  activeTab === 'compare' 
+                  activeTab === 'fund-analysis' 
                     ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105' 
                     : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:scale-102'
                 }`}
               >
-                <BarChart3 className="h-6 w-6" />
+                <Target className="h-6 w-6" />
                 <div>
-                  <div className="font-semibold">Fund Comparison</div>
-                  <div className="text-xs opacity-75">Compare 2 funds side-by-side</div>
+                  <div className="font-semibold">Fund Analysis</div>
+                  <div className="text-xs opacity-75">Analyze single fund vs index</div>
                 </div>
               </button>
               
@@ -145,10 +105,10 @@ const App = () => {
                     : 'text-gray-600 hover:bg-green-50 hover:text-green-700 hover:scale-102'
                 }`}
               >
-                <PieChart className="h-6 w-6" />
+                <Briefcase className="h-6 w-6" />
                 <div>
                   <div className="font-semibold">Portfolio Builder</div>
-                  <div className="text-xs opacity-75">Build diversified portfolio</div>
+                  <div className="text-xs opacity-75">Build & manage portfolios</div>
                 </div>
               </button>
               
@@ -190,11 +150,8 @@ const App = () => {
         )}
 
         {/* Main Content */}
-        {activeTab === 'compare' && (
-          <>
-            <InvestmentForm onCalculate={calculateComparison} loading={loading} />
-            <ResultsDisplay results={results} loading={loading} error={error} />
-          </>
+        {activeTab === 'fund-analysis' && (
+          <FundAnalysis />
         )}
         
         {activeTab === 'portfolio' && (

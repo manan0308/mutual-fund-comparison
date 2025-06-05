@@ -15,6 +15,7 @@ const { errorHandler, notFoundHandler, handleUncaughtException, handleUnhandledR
 const { validateSearchFunds, validateSchemeCode, validateDateRange, validateComparePortfolios, sanitizeRequest } = require('./src/middleware/validation');
 const fundsRoutes = require('./src/routes/funds');
 const portfolioRoutes = require('./src/routes/portfolio');
+const indicesRoutes = require('./src/routes/indices');
 
 // Handle uncaught exceptions and rejections
 handleUncaughtException();
@@ -143,6 +144,7 @@ app.get('/ready', asyncHandler(async (req, res) => {
 // API Routes
 app.use('/api', fundsRoutes);
 app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/indices', indicesRoutes);
 
 
 

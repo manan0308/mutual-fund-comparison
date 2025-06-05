@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Trash2, PieChart, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { apiService } from '../services/api';
+import { getDefaultBenchmarkIndex } from '../utils/formDefaults';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
 
@@ -82,7 +83,7 @@ const FundSearchDropdown = ({ onSelect, excludeIds = [] }) => {
 const PortfolioBuilder = ({ onPortfolioCreate }) => {
   const [portfolioName, setPortfolioName] = useState('');
   const [selectedFunds, setSelectedFunds] = useState([]);
-  const [benchmarkIndex, setBenchmarkIndex] = useState('nifty50');
+  const [benchmarkIndex, setBenchmarkIndex] = useState(getDefaultBenchmarkIndex());
   const [loading, setLoading] = useState(false);
 
   const addFund = (fund) => {
@@ -174,20 +175,9 @@ const PortfolioBuilder = ({ onPortfolioCreate }) => {
         benchmarkIndex
       };
 
-      // For now, let's create a mock response since we need to update the backend
-      const mockResult = {
-        success: true,
-        portfolio: {
-          id: `portfolio_${Date.now()}`,
-          name: portfolioName,
-          funds: portfolioData.funds,
-          createdAt: new Date().toISOString(),
-          totalMonthlyInvestment: getTotalMonthlyInvestment(),
-          totalLumpSumInvestment: getTotalLumpSumInvestment()
-        }
-      };
-
-      onPortfolioCreate(mockResult);
+      // Create portfolio using real API
+      const result = await apiService.createPortfolio(portfolioData);
+      onPortfolioCreate(result);
     } catch (error) {
       console.error('Error creating portfolio:', error);
       alert('Failed to create portfolio');

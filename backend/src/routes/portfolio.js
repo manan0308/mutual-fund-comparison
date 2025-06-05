@@ -1,277 +1,246 @@
 const express = require('express');
 const { asyncHandler } = require('../middleware/errorHandler');
-const { validatePortfolioCreate, validateMultiSipCalculation } = require('../middleware/validation');
-const mfApiService = require('../services/mfApiService');
-const calculationService = require('../services/calculationService');
+const { validatePortfolioCreate } = require('../middleware/validation');
+const portfolioDbService = require('../services/portfolioDbService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 // Create multi-fund portfolio
 router.post('/create', validatePortfolioCreate, asyncHandler(async (req, res) => {
-  const { name, funds, totalAmount, investmentType, benchmarkIndex } = req.body;
+  const { name, funds, benchmarkIndex, userId } = req.body;
   
   logger.info('Creating multi-fund portfolio', { 
     name, 
     fundCount: funds.length, 
-    totalAmount, 
-    investmentType 
-  });
-
-  // Validate allocations sum to 100%
-  const totalAllocation = funds.reduce((sum, fund) => sum + fund.allocation, 0);
-  if (Math.abs(totalAllocation - 100) > 0.01) {
-    return res.status(400).json({
-      error: 'Fund allocations must sum to 100%',
-      currentTotal: totalAllocation
-    });
-  }
-
-  // Fetch fund details for each fund
-  const fundDetails = await Promise.all(
-    funds.map(async (fund) => {
-      try {
-        const [allFunds] = await Promise.all([
-          mfApiService.getAllFunds()
-        ]);
-        
-        const fundInfo = allFunds.find(f => f.schemeCode.toString() === fund.schemeCode.toString());
-        if (!fundInfo) {
-          throw new Error(`Fund with scheme code ${fund.schemeCode} not found`);
-        }
-
-        return {
-          ...fund,
-          name: fundInfo.schemeName,
-          category: mfApiService.categorizeScheme(fundInfo.schemeName),
-          amount: Math.round(totalAmount * fund.allocation / 100)
-        };
-      } catch (error) {
-        logger.error('Error fetching fund details', { schemeCode: fund.schemeCode, error: error.message });
-        throw new Error(`Failed to fetch details for fund ${fund.schemeCode}`);
-      }
-    })
-  );
-
-  // Calculate portfolio metrics
-  const portfolioMetrics = await calculationService.calculatePortfolioMetrics({
-    funds: fundDetails,
-    investmentType,
-    totalAmount,
-    benchmarkIndex
-  });
-
-  const portfolio = {
-    id: `portfolio_${Date.now()}`,
-    name,
-    funds: fundDetails,
-    totalAmount,
-    investmentType,
     benchmarkIndex,
-    metrics: portfolioMetrics,
-    createdAt: new Date().toISOString()
-  };
-
-  logger.info('Portfolio created successfully', { portfolioId: portfolio.id });
-
-  res.status(201).json({
-    success: true,
-    portfolio,
-    summary: {
-      totalFunds: fundDetails.length,
-      totalAmount,
-      expectedReturn: portfolioMetrics.expectedAnnualReturn,
-      riskLevel: portfolioMetrics.riskLevel,
-      diversificationScore: portfolioMetrics.diversificationScore
-    }
+    userId: userId || 'anonymous'
   });
+
+  // Use the new portfolio database service
+  const result = await portfolioDbService.createPortfolio({
+    name,
+    funds,
+    benchmarkIndex: benchmarkIndex || 'nifty50',
+    userId: userId || 'anonymous'
+  });
+
+  res.json(result);
 }));
 
-// Multi-fund SIP calculator
-router.post('/sip-calculator', validateMultiSipCalculation, asyncHandler(async (req, res) => {
-  const { funds, monthlyAmount, duration, startDate } = req.body;
+// Get portfolio by ID
+router.get('/:portfolioId', asyncHandler(async (req, res) => {
+  const { portfolioId } = req.params;
   
-  logger.info('Calculating multi-fund SIP', { 
-    fundCount: funds.length, 
-    monthlyAmount, 
-    duration 
-  });
+  logger.info('Fetching portfolio', { portfolioId });
 
-  // Validate allocations sum to 100%
-  const totalAllocation = funds.reduce((sum, fund) => sum + fund.allocation, 0);
-  if (Math.abs(totalAllocation - 100) > 0.01) {
-    return res.status(400).json({
-      error: 'Fund allocations must sum to 100%',
-      currentTotal: totalAllocation
-    });
-  }
+  const result = await portfolioDbService.getPortfolio(portfolioId);
+  res.json(result);
+}));
 
-  // Calculate individual fund SIPs
-  const sipCalculations = await Promise.all(
-    funds.map(async (fund) => {
-      try {
-        const fundAmount = Math.round(monthlyAmount * fund.allocation / 100);
-        
-        // Get fund details
-        const allFunds = await mfApiService.getAllFunds();
-        const fundInfo = allFunds.find(f => f.schemeCode.toString() === fund.schemeCode.toString());
-        
-        if (!fundInfo) {
-          throw new Error(`Fund with scheme code ${fund.schemeCode} not found`);
-        }
-
-        // Get NAV data for calculation
-        const endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + duration);
-        
-        const navData = await mfApiService.getFundNavData(fund.schemeCode);
-        
-        // Calculate SIP returns for this fund
-        const sipResult = calculationService.calculateSIPReturns({
-          navData: navData.navData || [],
-          monthlyAmount: fundAmount,
-          duration,
-          startDate
-        });
-
-        return {
-          schemeCode: fund.schemeCode,
-          name: fundInfo.schemeName,
-          category: mfApiService.categorizeScheme(fundInfo.schemeName),
-          allocation: fund.allocation,
-          monthlyAmount: fundAmount,
-          ...sipResult
-        };
-      } catch (error) {
-        logger.error('Error calculating SIP for fund', { schemeCode: fund.schemeCode, error: error.message });
-        
-        // Return fallback calculation for this fund
-        const fundAmount = Math.round(monthlyAmount * fund.allocation / 100);
-        const totalInvested = fundAmount * duration;
-        const estimatedValue = totalInvested * 1.12; // 12% assumed return
-        
-        return {
-          schemeCode: fund.schemeCode,
-          name: `Fund ${fund.schemeCode}`,
-          category: 'Unknown',
-          allocation: fund.allocation,
-          monthlyAmount: fundAmount,
-          totalInvested,
-          currentValue: estimatedValue,
-          absoluteReturn: estimatedValue - totalInvested,
-          annualizedReturn: 12,
-          units: estimatedValue / 100 // Assumed NAV
-        };
-      }
-    })
-  );
-
-  // Calculate combined portfolio metrics
-  const totalInvested = sipCalculations.reduce((sum, calc) => sum + calc.totalInvested, 0);
-  const totalCurrentValue = sipCalculations.reduce((sum, calc) => sum + calc.currentValue, 0);
-  const totalAbsoluteReturn = totalCurrentValue - totalInvested;
-  const totalReturnPercentage = (totalAbsoluteReturn / totalInvested) * 100;
+// Update portfolio
+router.put('/:portfolioId', asyncHandler(async (req, res) => {
+  const { portfolioId } = req.params;
+  const updateData = req.body;
   
-  // Calculate weighted average annual return
-  const weightedReturn = sipCalculations.reduce((sum, calc) => {
-    const weight = calc.totalInvested / totalInvested;
-    return sum + (calc.annualizedReturn * weight);
-  }, 0);
+  logger.info('Updating portfolio', { portfolioId, updateData });
 
-  // Generate chart data
-  const chartData = calculationService.generateMultiFundSIPChart({
-    funds: sipCalculations,
-    duration,
-    startDate
-  });
+  const result = await portfolioDbService.updatePortfolio(portfolioId, updateData);
+  res.json(result);
+}));
 
-  // Calculate risk metrics
-  const riskMetrics = calculationService.calculatePortfolioRisk(sipCalculations);
+// Delete portfolio
+router.delete('/:portfolioId', asyncHandler(async (req, res) => {
+  const { portfolioId } = req.params;
+  
+  logger.info('Deleting portfolio', { portfolioId });
 
-  const result = {
-    summary: {
-      totalMonthlyAmount: monthlyAmount,
-      duration,
-      totalInvested,
-      currentValue: totalCurrentValue,
-      absoluteReturn: totalAbsoluteReturn,
-      returnPercentage: totalReturnPercentage,
-      annualizedReturn: weightedReturn,
-      riskLevel: riskMetrics.riskLevel,
-      sharpeRatio: riskMetrics.sharpeRatio
-    },
-    funds: sipCalculations,
-    chartData,
-    riskMetrics,
-    recommendations: calculationService.generatePortfolioRecommendations({
-      funds: sipCalculations,
-      riskMetrics,
-      returnMetrics: { annualizedReturn: weightedReturn }
-    })
-  };
+  const result = await portfolioDbService.deletePortfolio(portfolioId);
+  res.json(result);
+}));
 
-  logger.info('Multi-fund SIP calculation completed', { 
-    totalInvested, 
-    currentValue: totalCurrentValue,
-    returnPercentage: totalReturnPercentage 
-  });
+// Get user portfolios
+router.get('/user/:userId', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  
+  logger.info('Fetching user portfolios', { userId });
 
-  res.json({
-    success: true,
-    ...result
-  });
+  const result = await portfolioDbService.getUserPortfolios(userId);
+  res.json(result);
 }));
 
 // Get portfolio analysis
 router.get('/:portfolioId/analysis', asyncHandler(async (req, res) => {
   const { portfolioId } = req.params;
   
-  // This would typically fetch from database
-  // For now, return analysis based on portfolio ID pattern
-  
   logger.info('Fetching portfolio analysis', { portfolioId });
 
-  const analysis = {
-    portfolioId,
-    performance: {
-      return1Month: 2.5,
-      return3Month: 7.8,
-      return6Month: 14.2,
-      return1Year: 18.5,
-      return3Year: 16.7,
-      return5Year: 15.2
-    },
-    riskMetrics: {
-      volatility: 12.5,
-      beta: 0.95,
-      sharpeRatio: 1.24,
-      maxDrawdown: -8.2
-    },
-    allocation: {
-      largeCap: 45,
-      midCap: 25,
-      smallCap: 15,
-      international: 10,
-      debt: 5
-    },
-    topHoldings: [
-      { name: 'HDFC Bank', percentage: 4.2 },
-      { name: 'ICICI Bank', percentage: 3.8 },
-      { name: 'Infosys', percentage: 3.5 },
-      { name: 'TCS', percentage: 3.1 },
-      { name: 'Reliance Industries', percentage: 2.9 }
-    ],
-    recommendations: [
-      'Consider rebalancing towards small-cap funds for higher growth potential',
-      'Your portfolio shows good diversification across market caps',
-      'Risk level is moderate - suitable for medium-term goals'
-    ]
-  };
+  try {
+    const portfolio = await portfolioDbService.getPortfolio(portfolioId);
+    
+    if (!portfolio.success) {
+      return res.status(404).json({
+        success: false,
+        error: 'Portfolio not found',
+        portfolioId
+      });
+    }
 
-  res.json({
-    success: true,
-    analysis
-  });
+    // Generate fresh analysis
+    const analysis = await portfolioDbService.generatePortfolioAnalysis(
+      portfolioId, 
+      portfolio.portfolio.funds, 
+      portfolio.portfolio.benchmarkIndex || 'nifty50'
+    );
+
+    res.json({
+      success: true,
+      analysis,
+      metadata: {
+        portfolioId,
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    if (error.message.includes('Database not enabled')) {
+      // Return a meaningful response for non-database mode
+      return res.status(501).json({
+        success: false,
+        error: 'Portfolio analysis requires database integration',
+        message: 'This feature is available when database is enabled',
+        portfolioId
+      });
+    }
+    throw error;
+  }
+}));
+
+// Compare portfolios
+router.post('/compare', asyncHandler(async (req, res) => {
+  const { portfolioIds } = req.body;
+  
+  if (!portfolioIds || !Array.isArray(portfolioIds) || portfolioIds.length < 2) {
+    return res.status(400).json({
+      success: false,
+      error: 'Please provide at least 2 portfolio IDs for comparison'
+    });
+  }
+
+  logger.info('Comparing portfolios', { portfolioIds });
+
+  try {
+    const portfolios = await Promise.all(
+      portfolioIds.map(id => portfolioDbService.getPortfolio(id))
+    );
+
+    const validPortfolios = portfolios.filter(p => p.success);
+    
+    if (validPortfolios.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least 2 valid portfolios are required for comparison',
+        found: validPortfolios.length
+      });
+    }
+
+    // Generate comparison analysis
+    const comparison = {
+      portfolios: validPortfolios.map(p => ({
+        id: p.portfolio.id,
+        name: p.portfolio.name,
+        totalFunds: p.portfolio.funds?.length || 0,
+        metrics: p.portfolio.analysis?.metrics || {},
+        risk: p.portfolio.analysis?.risk || {},
+        costs: p.portfolio.analysis?.costs || {}
+      })),
+      summary: {
+        bestPerformer: null,
+        lowestRisk: null,
+        mostCostEfficient: null,
+        mostDiversified: null
+      }
+    };
+
+    // Calculate comparison metrics
+    if (comparison.portfolios.length > 0) {
+      comparison.summary.bestPerformer = comparison.portfolios.reduce((best, portfolio) => 
+        (portfolio.metrics.expectedAnnualReturn || 0) > (best.metrics.expectedAnnualReturn || 0) ? portfolio : best
+      );
+
+      comparison.summary.lowestRisk = comparison.portfolios.reduce((lowest, portfolio) => 
+        (portfolio.risk.riskScore || 10) < (lowest.risk.riskScore || 10) ? portfolio : lowest
+      );
+
+      comparison.summary.mostCostEfficient = comparison.portfolios.reduce((efficient, portfolio) => 
+        (portfolio.costs.costEfficiencyScore || 0) > (efficient.costs.costEfficiencyScore || 0) ? portfolio : efficient
+      );
+
+      comparison.summary.mostDiversified = comparison.portfolios.reduce((diversified, portfolio) => 
+        (portfolio.metrics.diversificationScore || 0) > (diversified.metrics.diversificationScore || 0) ? portfolio : diversified
+      );
+    }
+
+    res.json({
+      success: true,
+      comparison,
+      metadata: {
+        comparedAt: new Date().toISOString(),
+        portfoliosCompared: validPortfolios.length,
+        portfoliosRequested: portfolioIds.length
+      }
+    });
+
+  } catch (error) {
+    if (error.message.includes('Database not enabled')) {
+      return res.status(501).json({
+        success: false,
+        error: 'Portfolio comparison requires database integration',
+        message: 'This feature is available when database is enabled'
+      });
+    }
+    throw error;
+  }
+}));
+
+// Get portfolio performance over time
+router.get('/:portfolioId/performance', asyncHandler(async (req, res) => {
+  const { portfolioId } = req.params;
+  const { period = '1y' } = req.query;
+  
+  logger.info('Fetching portfolio performance', { portfolioId, period });
+
+  try {
+    const portfolio = await portfolioDbService.getPortfolio(portfolioId);
+    
+    if (!portfolio.success) {
+      return res.status(404).json({
+        success: false,
+        error: 'Portfolio not found',
+        portfolioId
+      });
+    }
+
+    // Calculate real portfolio performance based on actual NAV data
+    const performanceData = await portfolioDbService.calculatePortfolioPerformance(
+      portfolio.data.funds, 
+      period
+    );
+
+    res.json({
+      success: true,
+      performance: performanceData,
+      metadata: {
+        portfolioId,
+        period,
+        generatedAt: new Date().toISOString(),
+        note: 'Simulated data - real implementation would track historical values'
+      }
+    });
+
+  } catch (error) {
+    throw error;
+  }
 }));
 
 module.exports = router;

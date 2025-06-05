@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
 import { Calendar, DollarSign, BarChart3, PieChart, AlertCircle } from 'lucide-react';
 import FundSearchDropdown from './FundSearchDropdown';
+import { 
+  getDefaultSipAmount, 
+  getDefaultLumpAmount, 
+  getDefaultStartDate, 
+  getDefaultEndDate, 
+  getDefaultLumpDate, 
+  getDefaultInvestmentType 
+} from '../utils/formDefaults';
 
 const InvestmentForm = ({ onCalculate, loading = false }) => {
   const [currentFund, setCurrentFund] = useState(null);
   const [comparisonFund, setComparisonFund] = useState(null);
-  const [investmentType, setInvestmentType] = useState('sip');
-  const [sipAmount, setSipAmount] = useState('5000');
-  const [lumpAmount, setLumpAmount] = useState('100000');
-  const [startDate, setStartDate] = useState('2020-01-01');
-  const [endDate, setEndDate] = useState('2024-12-31');
-  const [lumpDate, setLumpDate] = useState('2020-01-01');
+  const [investmentType, setInvestmentType] = useState(getDefaultInvestmentType());
+  const [sipAmount, setSipAmount] = useState(getDefaultSipAmount());
+  const [lumpAmount, setLumpAmount] = useState(getDefaultLumpAmount());
+  const [startDate, setStartDate] = useState(getDefaultStartDate());
+  const [endDate, setEndDate] = useState(getDefaultEndDate());
+  const [lumpDate, setLumpDate] = useState(getDefaultLumpDate());
   const [errors, setErrors] = useState({});
 
   // Validation
@@ -34,9 +42,9 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
       if (!amount || amount <= 0) {
         newErrors.sipAmount = 'Please enter a valid SIP amount';
       } else if (amount < 500) {
-        newErrors.sipAmount = 'Minimum SIP amount is ¹500';
+        newErrors.sipAmount = 'Minimum SIP amount is ï¿½500';
       } else if (amount > 1000000) {
-        newErrors.sipAmount = 'Maximum SIP amount is ¹10,00,000';
+        newErrors.sipAmount = 'Maximum SIP amount is ï¿½10,00,000';
       }
 
       if (!startDate) {
@@ -69,9 +77,9 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
       if (!amount || amount <= 0) {
         newErrors.lumpAmount = 'Please enter a valid investment amount';
       } else if (amount < 1000) {
-        newErrors.lumpAmount = 'Minimum investment amount is ¹1,000';
+        newErrors.lumpAmount = 'Minimum investment amount is ï¿½1,000';
       } else if (amount > 100000000) {
-        newErrors.lumpAmount = 'Maximum investment amount is ¹10,00,00,000';
+        newErrors.lumpAmount = 'Maximum investment amount is ï¿½10,00,00,000';
       }
 
       if (!lumpDate) {
@@ -249,7 +257,7 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
               Monthly SIP Amount *
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">¹</span>
+              <span className="absolute left-3 top-2 text-gray-500">ï¿½</span>
               <input
                 type="number"
                 value={sipAmount}
@@ -257,7 +265,7 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
                 className={`w-full pl-8 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                   errors.sipAmount ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="5000"
+                placeholder={getDefaultSipAmount()}
                 min="500"
                 max="1000000"
               />
@@ -315,7 +323,7 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
               Investment Amount *
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">¹</span>
+              <span className="absolute left-3 top-2 text-gray-500">ï¿½</span>
               <input
                 type="number"
                 value={lumpAmount}
@@ -323,7 +331,7 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
                 className={`w-full pl-8 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
                   errors.lumpAmount ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="100000"
+                placeholder={getDefaultLumpAmount()}
                 min="1000"
                 max="100000000"
               />
@@ -374,12 +382,12 @@ const InvestmentForm = ({ onCalculate, loading = false }) => {
             )}
             <div>
               <span className="text-gray-500">Total Investment:</span>
-              <div className="font-medium">¹{summary.totalInvestment.toLocaleString()}</div>
+              <div className="font-medium">ï¿½{summary.totalInvestment.toLocaleString()}</div>
             </div>
             <div>
-              <span className="text-gray-500">Monthly:</span>
+              <span className="text-gray-500">Amount:</span>
               <div className="font-medium">
-                ¹{investmentType === 'sip' ? sipAmount : Math.round(summary.totalInvestment / (summary.years * 12)).toLocaleString()}
+                ï¿½{investmentType === 'sip' ? parseFloat(sipAmount).toLocaleString() : parseFloat(lumpAmount).toLocaleString()}
               </div>
             </div>
           </div>
